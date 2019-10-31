@@ -1,10 +1,9 @@
-// Operatori con Accesso al Bot
 {
-	developers: {
-		"156851568975675392", // Fra (Developer Staffer)
-		"348861145572048906", // DefaultMatrix (Developer Manager)
-	  	"332261105177198593",  // Romans (Developer Staffer)
-	  	"245224952406474753" //Maruko (Developer Staffer)
-	}
+	developers: [
+		"156851568975675392",
+		"348861145572048906",
+	  	"332261105177198593",
+	  	"245224952406474753"
+	]
 }
 

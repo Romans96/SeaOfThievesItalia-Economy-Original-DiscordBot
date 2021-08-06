@@ -6,6 +6,6 @@ It uses
 With the Integrations of:
 - [DiscordJs](https://discord.js.org/#/) to manage users from discord, commands and DB;
 - [Unofficial Xbox API](https://xapi.us/) to retrive the game data for each user;
-- <a href="https://sequelize.org/" target="_blank">SequelizeJs</a> and <a href="https://www.postgresql.org/" target="_blank">SequelizeJs</a> for the database;
+- <a href="https://sequelize.org/" target="_blank">SequelizeJs</a> and <a href="https://www.postgresql.org/" target="_blank">PostagreSQL</a> for the database;
 
 

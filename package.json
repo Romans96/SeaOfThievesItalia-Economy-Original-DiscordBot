@@ -1,0 +1,22 @@
+{
+  "name": "economy",
+  "version": "1.2.0",
+  "description": "Semplice BOT per la creazione di un sistema Monetario per la community di Sea of Thieves Italia",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "Romans96",
+  "license": "ISC",
+  "dependencies": {
+    "discord.js": "^11.5.1",
+    "dotenv": "^7.0.0",
+    "fs": "0.0.1-security",
+    "node-fetch": "^2.3.0",
+    "pg": "^7.11.0",
+    "pg-hstore": "^2.3.3",
+    "printable-characters": "^1.0.42",
+    "sequelize": "^5.8.9"
+  }
+}

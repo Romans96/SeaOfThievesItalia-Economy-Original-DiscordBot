@@ -1,0 +1,9 @@
+🔹**Livello 1: Cuoco** - 500 Talleri
+🔹**Livello 2: Cannonaro** - 1500 Talleri
+🔹**Livello 3: Nostromo** - 5000 Talleri
+🔹**Livello 4: Timoniere** - 10000 Talleri
+🔹**Livello 5: Cartografo** - 25000 Talleri
+🔹**Livello 6: Ufficiale di Bordo** - 50000 Talleri
+🔹**Livello 7: Quartiermastro** - 75000 Talleri
+🔹**Livello 8: Capitano** - 100000 Talleri
+*Questi ruoli sono acquisibili con il comando `$portafoglio`, se raggiunti*

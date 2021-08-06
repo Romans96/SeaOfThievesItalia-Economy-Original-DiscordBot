@@ -1,0 +1,7 @@
+
+▶ Nel breve **Tutorial** qui di seguito potete vedere come inviare un\'immagine come allegato al comando **`$assistenza (testo richiesta)`**, per la verifica
+degli obbiettivi. Per esempio se volete il premio per Pirata Leggendario, dovrete inviare due foto (con due comandi) 
+per mostrare i livelli delle 3 fazioni.
+Per farlo basta che ottenete uno Screen dei livello (usando Stamp, Print o PS a seconda della tastiera), incollarlo direttamente
+sul canale dei comandi con Ctrl+V (oppure salvandolo sul vostro computer e caricarlo nella maniera classica).
+Fatto questo, scrivete il comando d'assistenza, con relativa richiesta, e premte su *Carica*.

@@ -1,0 +1,80 @@
+SISTEMA MONETARIO
+
+- Un portafoglio per ogni utente => FATTO
+- Un portafoglio per ogni ciurma => FATTO
+
+
+PORTAFOGLIO UTENTE
+
+Cosa può fare l'utente con il suo portafoglio?
+- Vedere il proprio bilancio => FATTO
+- Cedere/donare il proprio denaro SOLO al portafoglio ciurma e pagare i servizi => MANCANO SERVIZI
+
+Cosa può fare lo Staff col portafoglio utente ?
+- Vedere il bilancio
+- Cedere/donare il denaro dal portafoglio dell'utente ad altri portafogli e pagare i servizi
+- Rimuovere il denaro dal portafogli e pagare i servizi
+- Aggiungere denaro nel portafogli
+
+
+PORTAFOGLIO CIURMA
+
+Cosa può fare l'utente con il portafoglio di una ciurma (anche non sua)?
+- Vedere il bilancio => FATTO
+
+Cosa può fare un membro con il portafoglio della sua ciurma?
+- Vedere il bilancio => FATTO
+- Cedere/donare il proprio denaro al portafoglio della ciurma => FATTO
+
+Cosa può fare un Gestore Ciurma con il portafoglio della sua ciurma?
+- Vedere il bilancio 
+- Cedere/donare il proprio denaro al portafoglio della ciurma
+- Cedere/donare il denaro del portafogli ciurma ad altri portafogli e pagare i servizi => MANCANO SERVIZI
+
+Cosa può fare lo Staff con il portafoglio di una ciurma?
+- Vedere il bilancio
+- Cedere/donare il denaro del portafogli ciurma ad altri portafogli e pagare i servizi
+- Rimuovere il denaro dal portafogli e pagare i servizi
+- Aggiungere denaro nel portafogli
+LEDERBOARDS
+
+- Leaderboard globale utenti
+- Leaderboard globale ciurme
+- Leaferboard interna ciurme
+
+
+LEADERBOARD GLOBALE UTENTI
+
+Leaderboard visualizzabile da tutti tramite l'esecuzione di un comando.
+Mostra un messaggio embed con la lista dei top 20 utenti e i rispettivi punteggi (posseduti + donati alla ciurma)
+Inoltre in alto mostra il nome dell'utente che ha eseguito il comando e la rispettiva posizione.
+
+N.B. La lista mostra SOLO i primi 20 utenti e il numero della posizione dell'utente che ha eseguito il comando.
+
+
+LEADERBOARD GLOBALE CIURME
+
+Leaderboard visualizzabile da tutti tramite l'esecuzione di un comando.
+Mostra un messaggio embed con la lista delle ciurme e i rispettivi punteggi.
+
+
+LEADERBOARD INTERNA CIURME
+
+Leaderboard visualizzabile dai soli membri ciurma tramite l'esecuzione di un comando.
+Mostra un messaggio embed con la lista dei membri della ciurma, i rispettivi punteggi e quanto hanno contribuito al portafoglio ciurma.
+Inoltre in alto mostra il punteggio totale della ciurma e accanto la somma totale dei punti di tutti i membri.
+
+
+
+Forzieri dei Cacciatori d'Oro incassati
+2051
+Distanza percorsa (metri)
+4028724
+Viaggi completati
+411
+Teschi dell'Ordine delle anime incassati
+1663
+Carichi dell'Alleanza del Mercante consegnati
+1743
+Isole visitate
+3799

@@ -1,0 +1,11 @@
+
+▶ **I Talleri** possono essere poi ceduti alla propria ciurma, i quali verranno usati dai Gestori Ciurma
+per acquistare Servizi, Ampliamenti e Optional, utili per la crescita delle vostre Ciurme, 
+visualizzabili con il comando **`$listaacquisti`**.
+
+▶ Il BOT crea in automatico anche **3 leaderboards** visualizzabili con corrispettivi comandi:
+🔹 `$classificaciurme`
+🔹 `$classificautenti`
+🔹 `$classificainterna`
+
+▶ Digita **--> `$help utente` <--** per visualizzare tutti i comandi attualmente disponibili e i relativi dettagli!

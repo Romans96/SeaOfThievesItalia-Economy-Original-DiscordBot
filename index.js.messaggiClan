@@ -1,0 +1,1811 @@
+const Discord = require('discord.js');
+const config = require("./config.json");
+const Sequelize = require('sequelize');
+const fs = require('fs');
+require('dotenv').config(); 
+const client = new Discord.Client();
+
+const logs = require('./embeds/embed-logs.js');
+const requests = require('./embeds/embed-request.js');
+const services = require('./embeds/embed-services.js');
+const help = require('./embeds/embed-help.js');
+const listapremi = require('./embeds/embed-listapremi.js');
+const listaacquisti = require('./embeds/embed-listaacquisti.js');
+const guidabot = require('./embeds/embed-guidabot.js');
+
+const regole = fs.readFileSync("./txt_files/regole.txt", "utf-8");
+
+const Op = Sequelize.Op;
+
+const sequelize = new Sequelize( {
+	database: 'economy',
+	username: 'sotitalia',
+	password: 'psw',
+	host: '127.0.0.1',
+	dialect: 'postgres',
+	protocol: 'postgres',
+	/* dialectOptions: {
+	ssl: true
+	}, ONLY HOST*/
+	logging: false,
+	port: '5432' ,
+    define: {
+        charset: 'utf8',
+        dialectOptions: {
+          collate: 'utf8_general_ci'
+        }
+    },
+    omitNull: true,
+    // logging: console.log,
+});
+sequelize.authenticate()
+	.then( () => {
+		console.log("Connessione stabilita");
+	}).catch(err => {
+		console.error("Impossibile connettersi: "+err);
+	});
+
+const crews = sequelize.define('crews', {
+    c_id: {
+        type: Sequelize.STRING,
+        unique: true,
+        primaryKey: true,
+    },
+    name: {
+        type: Sequelize.STRING,
+		unique: true,
+    },
+    balance: {
+        type: Sequelize.INTEGER,
+    },
+    banned: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: false,
+    }
+});
+
+const users = sequelize.define('users', {
+    u_id: {
+        type: Sequelize.STRING,
+        unique: true,
+        primaryKey: true,
+    },
+    name: {
+        type: Sequelize.STRING,
+		unique: true,
+    },
+    balance: {
+        type: Sequelize.INTEGER,
+    },
+    date_j: {
+        type: Sequelize.STRING,
+    },
+    banned: {
+        type: Sequelize.BOOLEAN,
+        defaultValue: false,
+    }
+});
+
+const eco_settings = sequelize.define('economy_settings', {
+    name: {
+        type: Sequelize.STRING,
+        unique: true,
+    },
+    datas: {
+        type: Sequelize.STRING,
+        defaultValue: "",
+    }
+});
+
+async function addUser(msg) {
+    try {
+        await users.create({
+            u_id: msg.author.id,
+            name: msg.author.username,
+            balance: 0,
+            date_j: 0,
+            banned: false
+        });
+        msg.reply("Utente inserito correttamente, ora puoi utilizzare i vari comandi disponibili!");
+    }
+    catch (e) {
+        if (e.name === 'SequelizeConstraintError') {
+            return;
+        }
+    }
+    
+}
+
+async function findOneUser(uid) {
+    const findUser = await users.findOne( { where: { u_id: uid } } );
+    
+    return Promise.resolve(findUser);
+}
+
+const talkedRecently = new Set();
+function wait(msg) {
+    if (talkedRecently.has(msg.author.id)) {
+        msg.channel.send("Attendi 10 secondi per scrivere un altro comando. - " + msg.author);
+        return false;
+    } else {
+        // Adds the user to the set so that they can't talk for a minute
+        talkedRecently.add(msg.author.id);
+        setTimeout(() => {
+        // Removes the user from the set after a minute
+        talkedRecently.delete(msg.author.id);
+        }, 10000);
+        return true;
+    }
+}
+
+const x = 2000;
+const times = 1000000000;
+
+function delay() {
+	for (let i = 0; i < times; i++) {
+		x*x;
+	}
+}
+
+client.once("ready", async () => {
+    console.log("BOT Attivo");
+    client.user.setActivity('Usa $help');
+    // table synchronizations
+    crews.sync();
+    users.sync();
+    eco_settings.sync(/* {force:true} */);
+    
+    try {
+        await eco_settings.create( {name: "Moneta"}  );
+        await eco_settings.create( {name: "Staff_ID"}  );
+        await eco_settings.create( {name: "Gestore_ID"}  );
+        await eco_settings.create( {name: "LogsCh_ID"}  );
+        await eco_settings.create( {name: "RequestCh_ID"}  );
+        await eco_settings.create( {name: "ServicesCh_ID"}  );
+        await eco_settings.create( {name: "UserMinMoneta"} );
+        await eco_settings.create( {name: "UserMaxMoneta"} );
+        await eco_settings.create( {name: "CrewMinMoneta"} );
+        await eco_settings.create( {name: "CrewMaxMoneta"} );
+        console.log("Settings creati!");
+    }
+    catch(e) {
+        if (e.name === 'SequelizeUniqueConstraintError') {
+            console.log("Error creating Eco_Settings Records")
+            return;
+        }
+    }
+});
+
+let intervals = new Map();
+client.on('voiceStateUpdate', async (oldMember, newMember) => {
+    let newUserChannel = newMember.voiceChannel
+    let oldUserChannel = oldMember.voiceChannel
+    let uid = newMember.user.id;
+    let username = newMember.user.username;
+    const Moneta = await eco_settings.findOne( { where: { name: "Moneta"} } ).get('datas');
+    const UserMaxMoneta = await eco_settings.findOne( { where: { name: "UserMaxMoneta"} } ).get('datas');
+
+    if(oldUserChannel === undefined && newUserChannel !== undefined) {
+        // User Joins a voice channel
+        try {
+            await users.create({
+                u_id: uid,
+                name: username,
+                balance: 0,
+                date_j: Date.now()
+            });
+        }
+        catch(e) {
+            if (e.name === 'SequelizeUniqueConstraintError') {
+                console.log('CREATE: That user already exists -> UPDATE: '+username);
+                
+                await users.update( {date_j: Date.now() } , { where: {u_id: uid} } );
+                let data_iniziale = Date.now();
+
+                intervals.set(uid, 
+                    setInterval( async function() {
+                        if ( (newMember.voiceChannel.name.toString().toLowerCase() === "afk") || newMember.voiceChannel === newMember.guild.afkChannel) {
+                            await users.update( {date_j: Date.now() } , { where: {u_id: uid} } );
+                        }
+                        else {
+                            
+                            let diff = Math.abs(Date.now() - await users.findOne({where: { u_id: uid } }).get('date_j') );
+                            let differenza_totale = Math.abs(Date.now() - data_iniziale);
+                            // console.log("diff_totale: "+differenza_totale);
+                            if (differenza_totale >=  (300*60000)  ) {
+                                client.users.get(uid).send(`Hai raggiunto il limite massimo di ${Moneta} guadagnabili in una sola sessione online. Esci e rientra in un canale vocale per riniziare a guadagnare!`);
+                                console.log("voicestateupdate max time reached by: "+username);
+                                await users.update( {date_j: 0 } , { where: {u_id: uid} } );
+                                try {
+                                    const interval = intervals.get(uid);
+                                    if(interval) clearInterval(interval);
+                                    intervals.delete(uid);
+                                }catch(e) {
+                                    console.log("Errore nella cancellazione del SetInterval: "+e);
+                                }
+                                console.log("Minuti totali passati on in questa sessione: "+ (Math.floor( (differenza_totale/1000)/60 )) )
+                                return;
+                            }
+                            let sec = Math.floor(diff/1000);
+                            let min = Math.floor( (diff/1000)/60 );
+                            // console.log(username + " -> " +min+":"+sec);
+                            if (min === 1) {
+                                await users.update( {date_j: Date.now() } , { where: {u_id: uid} } );
+                                const finduser = await users.findOne( { where: { u_id: uid } } );
+                                const balancef = finduser.get('balance');
+                                let num = parseInt(balancef)+1;
+                                if (num > UserMaxMoneta) {
+                                    console.log("voicestateupdate max money reached by: "+finduser.name);
+                                    return;
+                                }
+                                await users.update({balance: num }, {where: { u_id: finduser.get('u_id') }}); 
+                                // console.log("+1: "+finduser.name);
+                            }
+                        }
+                        
+                        process.nextTick(() => delay());
+                    }, 1000)
+                );
+            }
+            else {
+                console.log('VOICESTATEUPDATE: Something went wrong.');
+            }
+        }
+    }
+
+    else if (newUserChannel === undefined) {
+        // User leaves voice channel
+        await users.update( {date_j: 0} , { where: {u_id: uid} } );
+        const interval = intervals.get(uid);
+        if(interval) clearInterval(interval);
+        intervals.delete(uid);
+        // console.log(intervals.has(uid));
+        
+    }
+
+    
+});
+
+let flagDonateCrew = false;
+client.on("message", async msg => {
+    const args = msg.content.slice(config.prefix.length).trim().split(/ +/);
+	const command = args.shift().toLowerCase();
+    if (!msg.content.startsWith(config.prefix) || msg.author.bot) return;
+	
+		const moneta = await eco_settings.findOne( { where: { name: "Moneta"} } ).get('datas');
+		const Staff_ID = await eco_settings.findOne( { where: { name: "Staff_ID"} } ).get('datas');
+		const Gestore_ID = await eco_settings.findOne( { where: { name: "Gestore_ID"} } ).get('datas');
+		const LogsCh_ID = await eco_settings.findOne( { where: { name: "LogsCh_ID"} } ).get('datas');
+		const RequestCh_ID = await eco_settings.findOne( { where: { name: "RequestCh_ID"} } ).get('datas');
+		const ServicesCh_ID = await eco_settings.findOne( { where: { name: "ServicesCh_ID"} } ).get('datas');
+		const UserMaxMoneta = await eco_settings.findOne( { where: { name: "UserMaxMoneta"} } ).get('datas');
+		const UserMinMoneta = await eco_settings.findOne( { where: { name: "UserMinMoneta"} } ).get('datas');
+		const CrewMaxMoneta = await eco_settings.findOne( { where: { name: "CrewMaxMoneta"} } ).get('datas');
+		const CrewMinMoneta = await eco_settings.findOne( { where: { name: "CrewMinMoneta"} } ).get('datas');
+    
+
+    let azione = null;
+    // if (!wait(msg)) return;
+
+    // UTENTI
+    if (command === "portafoglio" && msg.channel.type === 'text') { // Visualizza Portafoglio Utente
+        if (args.length) msg.reply(" ERRORE -> Hai inserito troppi argomenti nel comando, prova con \`$portafoglio\`");
+        else {
+            try {
+                await users.create({
+                    u_id: msg.author.id,
+                    name: msg.author.username,
+                    balance: 0,
+                    date_j: 0,
+                    banned: false
+                });
+                return msg.reply("Utente inserito correttamente, ora puoi utilizzare i vari comandi disponibili!");
+            }
+            catch (e) {
+                if (e.name === 'SequelizeConstraintError') {
+                    return console.log("Errore CREATEUSER: "+e);
+                }
+            }
+            const user = await users.findOne( { where: { u_id: msg.author.id } } );
+            if (user.banned)
+                msg.reply(`Hai un totale di *${user.balance} ${moneta}*!\n Inoltre sei stato bannato dall'uso del BOT dallo <@&${Staff_ID}>`);
+            else
+                msg.reply(`Hai un totale di *${user.balance} ${moneta}*!`);
+            
+            
+            
+        }
+    }
+
+    else if (command === "portafoglioclan" && msg.channel.type === 'text') { // Visualizza Portafoglio del proprio Clan o di un altro
+        const role = msg.mentions.roles.first();
+        if (!role && !args.slice(0).length) {
+            try {
+                // Own Crew
+                const roles = await crews.findOne({
+                    where: {
+                        c_id: {
+                            [Op.in]: msg.member.roles.keyArray()
+                        }
+                    }
+                });
+                // console.log(msg.member.roles.keyArray())
+                msg.reply(`Il tuo clan *${roles.name}* ha un totale di *${roles.balance} ${moneta}*`)
+            } catch (e) {
+                msg.reply(`ERRORE -> Clan non registrato. Verifica il comando o richiedi allo staff l'aggiunta!`);
+            }
+        }
+        else if (args.slice(1).length) {
+            msg.reply("ERRORE -> Sintassi comando errata!");
+        }
+        else {
+            try {
+                // Tag Crew
+                const rid = role.id;
+                const find = await crews.findOne({ 
+                    where: { 
+                        c_id: rid 
+                    }
+                });
+                msg.channel.send(`Il clan *${find.name}* ha un totale di *${find.balance} ${moneta}* `);
+            } catch (e) {
+                msg.reply(`Clan non registrato. Verifica il comando o richiedi allo staff l'aggiunta!`);
+            }
+        }
+        
+    }
+    
+
+    else if (command === "deposita" && msg.channel.type === 'text') { // Dona un tot di Monete al Portafoglio del clan, se disponibili
+        if (!args[0] || !Number.isInteger( parseInt(args[0]) ) ) {
+            msg.reply(`ERRORE -> Inserisci un numero valido di *${moneta}* da donare alla tua ciurma!`);
+        }
+        else if (args.slice(1).length) {
+            msg.reply(`ERRORE -> Sintassi del comando errata! Riprova con \`$donate N\` (con N numero di ${moneta} da donare) `);
+        }
+        else {
+            const ms = await msg.channel.send("Confermi il comando?");
+            await ms.react('✔').then(() => ms.react('✖'));
+            const filter = (reaction, user) => {
+                return ['✔', '✖'].includes(reaction.emoji.name) && user.id === msg.author.id;
+            };
+            ms.awaitReactions(filter, { max: 1, time: 60000, errors: ['time'] })
+                .then( async collected => {
+                    const reaction = collected.first();
+                    if (reaction.emoji.name === '✔') {
+                        
+                        msg.reply('Comando confermato!');
+                        ms.delete();
+
+                        const mycrew = await crews.findOne({
+                            where: {
+                                c_id: {
+                                    [Op.in]: msg.member.roles.keyArray()
+                                }
+                            }
+                        });
+                        const myuser = await findOneUser(msg.author.id);
+                        if (!myuser) {
+                            return msg.reply("Non sei registrato, utilizza \`$portafoglio\` per registrarti!");
+                        }
+                        else if (myuser.banned) {
+                            return msg.reply(`Sei stato bannato dal BOT, non puoi usare o guadagnare ${moneta}. Scrivi con \`$assistenza (testo)\` per chiedere ulteriori informazioni allo Staff. `);
+                        }
+                            
+                        const balance_user = myuser.get('balance');
+                        let numuser = parseInt(balance_user)-parseInt(args[0].trim());
+                        if (numuser<0) {
+                            msg.reply(`Non hai abbastanza *${moneta}* da depositare, prova con un'altro valore!`);
+                        }
+                        else {
+                            const balance_crew = mycrew.get('balance');
+                            let numcrew = parseInt(balance_crew)+parseInt(args[0].trim());
+                            if (numcrew > CrewMaxMoneta) {
+                                return msg.reply(`Monete massime del Clan superate (${CrewMaxMoneta}). Non è possibile salire sopra tale limite!`);
+                            }
+                            await users.update( { balance: numuser }, { where: { u_id: myuser.u_id }} );
+                            await crews.update( { balance: numcrew }, { where: { c_id: mycrew.c_id }} );
+                            msg.reply(`Donati correttamente *${parseInt(args[0])} ${moneta}* al tuo clan *${mycrew.name}*`);
+                            
+                            azione = "donate";
+                            msg.client.channels.get(LogsCh_ID).send( logs(msg, args, moneta, mycrew, azione) );
+                        }
+                    } 
+                    else if (reaction.emoji.name === '✖') {
+                        msg.reply('Comando Annullato!');
+                        ms.delete();
+                    }
+                    else {
+                        msg.reply('Reazione selezionata errata!');
+                        ms.delete();
+                    }
+                })
+                .catch(collected => {
+                    msg.reply('Non hai selezionato alcun opzione in tempo. Riprova!');
+                    ms.delete();
+                });
+        
+            
+        }
+        
+    }
+
+    else if (command === "pagaservizio" && msg.channel.type === 'text') { // Utente paga per un certo servizio per sè
+        return msg.reply("Comando attualmente disattivato. Verrà attivato in seguito, con l'aggiunta di nuovi Servizi.")
+        if (!args[0] || !args[1] || !Number.isInteger( parseInt(args[0]) ) ) {
+            msg.reply(`ERRORE -> Inserisci un numero valido di *${moneta}* da pagare e un testo per il servizio! Riprova con \`$payservice N TEXT\` `);
+        }
+        else {
+            const ms = await msg.channel.send("Confermi il comando?");
+            await ms.react('✔').then(() => ms.react('✖'));
+            const filter = (reaction, user) => {
+                return ['✔', '✖'].includes(reaction.emoji.name) && user.id === msg.author.id;
+            };
+            ms.awaitReactions(filter, { max: 1, time: 60000, errors: ['time'] })
+                .then( async collected => {
+                    const reaction = collected.first();
+                    if (reaction.emoji.name === '✔') {
+                        
+                        msg.reply('Comando confermato!');
+                        ms.delete();
+
+                        const myuser = await findOneUser(msg.author.id);
+                        if (!myuser) {
+                            return msg.reply("Non sei registrato, utilizza \`$portafoglio\` per registrarti!");
+                        }
+                        else if (myuser.banned) {
+                            return msg.reply(`Sei stato bannato dal BOT, non puoi usare o guadagnare ${moneta}. Scrivi con \`$assistenza (testo)\` per chiedere ulteriori informazioni allo Staff. `);
+                        }
+
+                        const balance_user = myuser.get('balance');
+                        let numuser = parseInt(balance_user)-parseInt(args[0].trim());
+                        if (numuser < UserMinMoneta) {
+                            return msg.reply(`Monete minime superate (${UserMinMoneta}). Non è possibile scendere sotto tale limite!`);
+                        }
+                        if (numuser<0) {
+                            msg.reply(`Non hai abbastanza *${moneta}* per pagare!`);
+                        }
+                        else {
+            
+                            await users.update( { balance: numuser}, {where : { u_id: myuser.u_id }} );
+                            const newargs = args.slice(1).join(" ").trim();
+                            msg.reply(`Pagati correttamente *${args[0]} ${moneta}* (USER) per: **${newargs}**`);
+                            
+                            azione = "payservice";
+                            msg.client.channels.get(ServicesCh_ID).send( services(msg, args, moneta, azione) );
+                        }
+                    } 
+                    else if (reaction.emoji.name === '✖') {
+                        msg.reply('Comando Annullato');
+                        ms.delete();
+                    }
+                    else {
+                        msg.reply('Reazione selezionata errata!');
+                        ms.delete();
+                    }
+                })
+                .catch(collected => {
+                    msg.reply('Non hai selezionato alcun opzione in tempo. Riprova!');
+                    ms.delete();
+                });
+            
+        }
+    }
+
+    else if (command === "assistenza" && msg.channel.type === 'text') {
+        if (!args.length) {
+            msg.reply(`ERRORE -> Comando errato. Scrivi un testo corretto per la richiesta! Riprova con \`$request TEXT\` `);
+            return;
+        }
+        const ms = await msg.channel.send("Confermi il comando?");
+        await ms.react('✔').then(() => ms.react('✖'));
+        const filter = (reaction, user) => {
+            return ['✔', '✖'].includes(reaction.emoji.name) && user.id === msg.author.id;
+        };
+        ms.awaitReactions(filter, { max: 1, time: 60000, errors: ['time'] })
+            .then( async collected => {
+                const reaction = collected.first();
+                if (reaction.emoji.name === '✔') {
+                    
+                    msg.reply('Comando confermato!');
+                    ms.delete();
+
+                    const richiesta = args.join(" ").trim();
+
+                    let image;
+                    if (msg.attachments)
+                        msg.attachments.map( t => image = t.url );
+                    else
+                        image = null;
+                
+                    msg.client.channels.get(RequestCh_ID).send( requests(msg, richiesta, image )  );
+                    
+                } 
+                else if (reaction.emoji.name === '✖') {
+                    msg.reply('Comando ANnullato');
+                    ms.delete();
+                }
+                else {
+                    msg.reply('Reazione selezionata errata!');
+                    ms.delete();
+                }
+            })
+            .catch(collected => {
+                msg.reply('Non hai selezionato alcun opzione in tempo. Riprova!');
+                ms.delete();
+            });
+
+    }
+
+    // GESTORE CIURMA
+    else if (command === "depositaallaciurma" && msg.channel.type === 'text') { // Dona soldi dal proprio Portafoglio di Ciurma, a quello di un'altra Ciurma
+        if (msg.member.roles.has(Gestore_ID)) {
+            if (!flagDonateCrew) {
+                msg.reply("Comando attualmente disattivato");
+                return;
+            }
+            const role = msg.mentions.roles.first();
+            if (!role) {
+                msg.reply('ERRORE -> Inserimento ruolo crew errato! Riprova con \`$donatecrew @crew N\`');
+                return;
+            }
+            else if (!args[0] || !args[1] || !Number.isInteger(parseInt(args[1])) || args.slice(2).length) {
+                msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$donatecrew @crew N\`');
+                return;
+            }
+            const rid = role.id;
+
+            const ms = await msg.channel.send("Confermi il comando?");
+            await ms.react('✔').then(() => ms.react('✖'));
+            const filter = (reaction, user) => {
+                return ['✔', '✖'].includes(reaction.emoji.name) && user.id === msg.author.id;
+            };
+            ms.awaitReactions(filter, { max: 1, time: 60000, errors: ['time'] })
+                .then( async collected => {
+                    const reaction = collected.first();
+
+                    if (reaction.emoji.name === '✔') {
+                        msg.reply('Comando confermato!');
+                        ms.delete();
+
+                        try {
+                            const mycrew = await crews.findOne({
+                                where: {
+                                    c_id: {
+                                        [Op.in]: msg.member.roles.keyArray()
+                                    }
+                                }
+                            });
+                            if (mycrew.banned) {
+                                return msg.reply(`Il tuo Clan è stato bannato dal BOT, non puoi usare o guadagnare ${moneta}. Scrivi con \`$assistenza (testo)\` per chiedere ulteriori informazioni allo Staff. `);
+                            }
+                            const othercrew = await crews.findOne({
+                                where: {
+                                    c_id: rid
+                                }
+                            });
+                            if (othercrew.banned) {
+                                return msg.reply(`Il Clan taggato è stato bannato dal BOT, non può usare o guadagnare ${moneta}. Scrivi con \`$assistenza (testo)\` per chiedere ulteriori informazioni allo Staff. `);
+                            }
+                            
+                            const balance_crew = mycrew.get('balance');
+                            let numcrew = parseInt(balance_crew)-parseInt(args[1].trim());
+                            if (numcrew<0) {
+                                msg.reply(`Non avete abbastanza *${moneta}* da donare, prova con un'altro valore!`);
+                            }
+                            else {
+                                const balance_other = othercrew.get('balance');
+                                let numother = parseInt(balance_other)+parseInt(args[1].trim());
+                                if (numother > CrewMaxMoneta) {
+                                    return msg.reply(`Monete massime del Clan (${othercrew.name}) superate (${CrewMaxMoneta}). Non è possibile salire sopra tale limite!`);
+                                }
+                                await crews.update( { balance: numcrew }, {where : { c_id: mycrew.c_id }} );
+                                await crews.update( { balance: numother }, { where: { c_id: othercrew.c_id }} );
+                                msg.reply(`Donati correttamente *${parseInt(args[1])} ${moneta}* al clan *${othercrew.name}*`);
+                                
+                                azione = "donatecrew";
+                                msg.client.channels.get(LogsCh_ID).send( logs(msg, args, moneta, othercrew, azione) );
+                            }
+                        }
+                        catch (e) {
+                            msg.reply(`Clan non registrato. Verifica il comando o richiedi allo staff l'aggiunta!`);
+                        }
+                        
+                    } 
+                    else if (reaction.emoji.name === '✖') {
+                        msg.reply('Comando Annullato!');
+                        ms.delete();
+                    }
+                    else {
+                        msg.reply('Reazione selezionata errata!');
+                        ms.delete();
+                    }
+                })
+                .catch(collected => {
+                    msg.reply('Non hai selezionato alcun opzione in tempo. Riprova!');
+                    ms.delete();
+                });
+        } else msg.reply("Non hai i permessi per farlo: GestoreCiurma");
+    }
+    
+    else if (command === "pagaserviziociurma" && msg.channel.type === 'text') { // Gestore paga per un certo servizio, per il Clan
+        if (msg.member.roles.has(Gestore_ID) ) {
+            if (!args[0] || !args[1] || !Number.isInteger( parseInt(args[0]) ) ) {
+                msg.reply(`ERRORE -> Inserisci un numero valido di *${moneta}* da pagare e un testo per il servizio! Riprova con \`$paycrewservice N TEXT\` `);
+                return;
+            }
+
+            const ms = await msg.channel.send("Confermi il comando?");
+            await ms.react('✔').then(() => ms.react('✖'));
+            const filter = (reaction, user) => {
+                return ['✔', '✖'].includes(reaction.emoji.name) && user.id === msg.author.id;
+            };
+            ms.awaitReactions(filter, { max: 1, time: 60000, errors: ['time'] })
+                .then( async collected => {
+                    const reaction = collected.first();
+                    
+                    if (reaction.emoji.name === '✔') {
+                        msg.reply('Comando confermato!');
+                        ms.delete();
+
+                        try {
+                            const mycrew = await crews.findOne({
+                                where: {
+                                    c_id: {
+                                        [Op.in]: msg.member.roles.keyArray()
+                                    }
+                                }
+                            });
+                            if (mycrew.banned) {
+                                return msg.reply(`Il tuo Clan è stato bannato dal BOT, non puoi usare o guadagnare ${moneta}. Scrivi con \`$assistenza (testo)\` per chiedere ulteriori informazioni allo Staff. `);
+                            }
+                            
+                            const balance_crew = mycrew.get('balance');
+                            let numcrew = parseInt(balance_crew)-parseInt(args[0].trim());
+                            if (numcrew < CrewMinMoneta) {
+                                return msg.reply(`Monete minime superate (${CrewMinMoneta}). Non è possibile scendere sotto tale limite!`);
+                            }
+                            if (numcrew<0) {
+                                msg.reply(`Non avete abbastanza *${moneta}* per pagare, prova con un'altro valore!`);
+                            }
+                            else {
+                                await crews.update( { balance: numcrew}, {where : { c_id: mycrew.c_id }} );
+                                const newargs = args.slice(1).join(" ").trim();
+                                
+                                msg.reply(`Pagati correttamente *${args[0]} ${moneta}* (CREW) per: **${newargs}**`);
+                                
+                                azione = "paycrewservice";
+                                msg.client.channels.get(ServicesCh_ID).send( services(msg, args, moneta, azione) );
+                            }
+                        }
+                        catch (e) {
+                            msg.reply("Clan non trovato!")
+                        }
+                        
+                    } 
+                    else if (reaction.emoji.name === '✖') {
+                        msg.reply('Comando ANnullato');
+                        ms.delete();
+                    }
+                    else {
+                        msg.reply('Reazione selezionata errata!');
+                        ms.delete();
+                    }
+                })
+                .catch(collected => {
+                    msg.reply('Non hai selezionato alcun opzione in tempo. Riprova!');
+                    ms.delete();
+                });
+        } else msg.reply("Non hai i permessi per farlo: GestoreCiurma");
+    }
+
+    // LEADERBOARDS
+    else if (command === "classificaclan" && msg.channel.type === 'text') {
+        
+        const leaderEmbed = new Discord.RichEmbed()
+            .setColor('0xFF0000')
+            .setAuthor('<🔝> LeaderBoard Totale Clans <🔝>')
+            
+        const crewList = await crews.findAll({
+            order: [
+                ['balance', 'DESC']
+            ]
+        });
+        // for (let i in crewList) {
+        //     leaderEmbed.addField("-> "+crewList[i].name, crewList[i].balance + " " + moneta);
+        // } oppure:
+        crewList.forEach( (value,index) => leaderEmbed.addField( (index+1)+"° -> "+value.name,"~	" +value.balance + " " + moneta));
+
+        // Trovo il clan a cui appartiene l'autore del comando
+        const clan = await crews.findOne({
+            where: {
+                c_id: {
+                    [Op.in]: msg.member.roles.keyArray()
+                }
+            }
+        });
+        if (!clan) {
+            leaderEmbed.setFooter(msg.author.username+` non fai parte di alcun Clan registrato!` );
+        }
+        else {
+            const index = crewList.findIndex(crew => crew.c_id === clan.c_id);
+            // const userAuthor = await findOneUser(msg.author.id);
+    
+            leaderEmbed.setFooter(clan.name+`: ${moneta} => `+clan.balance+" , Pos: "+(index+1) );
+        }
+        
+
+        try {
+            msg.channel.send(leaderEmbed);
+        }
+        catch (e) {
+            console.log(e.message);
+        }
+
+    }
+
+    else if (command === "classificautenti" && msg.channel.type === 'text') {
+        
+        const leaderEmbed = new Discord.RichEmbed()
+            .setColor('0xFF0000')
+            .setAuthor('<🔝> LeaderBoard Totale Utenti (Primi 20) <🔝>')
+            
+        const userList = await users.findAll({
+            order: [
+                ['balance', 'DESC']
+            ]
+        });
+        let N;
+        let L = Object.keys(userList).length;
+        if (L <= 20) N = L;
+        else N = 20;
+        for (let i = 0 ; i < N ; i++) {
+            leaderEmbed.addField( (i+1)+"° -> "+userList[i].name, "~   "+ userList[i].balance + " " + moneta);
+        }
+        
+        try {
+            const index = userList.findIndex(user => user.u_id === msg.author.id);
+            const userAuthor = await findOneUser(msg.author.id);
+    
+            leaderEmbed.setFooter(msg.author.username+`: ${moneta} => `+userAuthor.balance+" , Pos: "+(index+1) );    
+        } catch(e) {
+            leaderEmbed.setFooter(msg.author.username+` Non sei registrato! Usa $balance per registrarti nel DataBase! `); 
+        }
+
+        try {
+            msg.channel.send(leaderEmbed);
+        }
+        catch (e) {
+            console.log(e.message);
+        }
+
+    }
+
+    else if (command === "classificainterna" && msg.channel.type === 'text') {
+        
+        if (args.length) {
+            msg.reply(`ERRORE -> Sintassi del comando errata! Riprova con \`$classificainterna\` `);
+            return;
+        }
+        const embedColor = '0xFF0000';
+        const leaderEmbed = new Discord.RichEmbed()
+            .setColor(embedColor)
+            .setAuthor('<🔝> LeaderBoard Interna Clan <🔝>');
+        
+        // Cerco la Crew dell'autore del comando
+        const roles = await crews.findOne({
+            where: {
+                c_id: {
+                    [Op.in]: msg.member.roles.keyArray()
+                }
+            }
+        });
+        if (!roles) {
+            msg.reply("ERRORE -> Non fai parte di alcun Clan registrato!");
+            return;
+        }
+        leaderEmbed.setDescription(`LeaderBoard __${roles.name}__`)
+        
+        // Cerco tutti gli utenti della Crew trovata sopra
+        const u_users = msg.guild.roles.get( roles.get('c_id') ).members.map(m => m.user.id);
+
+        // Prendo tutti gli Utenti appartenenti a quella crew e li ordino per punti (DECR)
+        const us = await users.findAll({
+            attributes: ['u_id', 'name', 'balance'],
+            where: {
+                u_id: {
+                    [Op.in]: u_users
+                }
+            },
+            order: [
+                ['balance', 'DESC']
+            ]
+        });
+
+        // Aggiungo una riga dell'embed per ogni presente
+        // us.forEach( (value, index) => leaderEmbed.addField( (index+1) +"" -> "+value.name,"~	"+ value.balance + " " + moneta));
+        let i;
+        let chunk = 20;
+        let temparray = [];
+        for (i = 0; i < us.length ; i+=chunk) {
+            let sliced = us.slice( i, i+chunk );
+            temparray.push( sliced );
+        }
+        // Stampo prima pagina LeaderBoard, dove ho titolo e Descrizione
+        temparray[0].forEach( (value, index) => leaderEmbed.addField( (index+1) +"° -> "+value.name,"~	"+ value.balance + " " + moneta) );
+        let finalIndex = temparray[0].length;
+
+        // Trovo utente che ha scritto il messaggio per footer
+        const userAuthor = await users.findOne({
+            where: {
+                u_id: msg.author.id
+            }
+        });
+        const index = us.findIndex(user => user.u_id === msg.author.id);
+
+        try {
+            if ( temparray.length <= 1)
+                leaderEmbed.setFooter(msg.author.username+`: ${moneta} => `+userAuthor.balance+" , Pos: "+(index+1) );
+
+            msg.channel.send(leaderEmbed);
+        }
+        catch (e) {
+            console.log(e.message);
+        }
+
+        /* Mi croe un Array e per ogni indice, partendo da 1 (0 er ala prima pagina), creo
+        un nuovo embed dove inserisco i relativi Utenti memorizzati.
+        Inoltre uso il finalIndex, per tenere conto man mano della posizione.*/
+        let newemb = new Array();
+        let x =0;
+        for (x = 1;  x < temparray.length ; x++) {
+            newemb[x] = new Discord.RichEmbed().setColor(embedColor)
+            temparray[x].forEach( (value, index) => newemb[x].addField( (finalIndex + index +1) +"° -> "+value.name, value.balance + " " + moneta) );
+            finalIndex +=temparray[x].length;
+            try {
+                if (x === (temparray.length-1) ) {
+                    if (userAuthor)
+                        newemb[x].setFooter(msg.author.username+`: ${moneta} => `+userAuthor.balance+" , Pos: "+(index+1) );
+                    else
+                        newemb[x].setFooter(msg.author.username+`  Non sei registrato! Usa $balance per registrarti nel DataBase! `);
+                }
+                msg.channel.send(newemb[x]);
+            }
+            catch (e) {
+                console.log(e.message);
+            }
+        }
+    }
+
+    // HELP
+    else if (command === "help" && msg.channel.type === 'text') {
+        let scelta = args[0];
+        if (!scelta || args.slice(1).length || (scelta.toLowerCase() !== "staff" && scelta.toLowerCase() !== "user") ) {
+            let testo = `Utilizzare come primo comando \`$portafoglio\` per poter iniziare ad usare il BOT!
+Per una Guida delle basi del Bot, puoi utilizzare il comando \`$guidaeconomy\`
+Per la lista completa dei comandi digitare successivamente \`$help user\` `;
+            let testo2 = `***Arhhh!*** Per utilizzare il _BOT_, questo comando comando devi usare **--->**\`$portafoglio\`**<---**
+▶ Per una **Guida Base**, sui comandi del _BOT_, dovrai digitare il comando **--->**\`$guidaeconomy\`**<---**.
+▶ Per la lista completa dei comandi digitare **--->**\`$help user\`**<---**.`;
+            msg.channel.send(testo2);
+            return;
+        }
+        scelta = args[0].toLowerCase();
+        if (scelta === "staff" && !msg.member.roles.has(Staff_ID)) {
+            return msg.reply("Non hai i permessi per farlo: Staff_ID");
+        }
+        
+        msg.channel.send( help(msg, moneta, scelta, regole) );
+    }
+
+    else if (command === "guidaeconomy" && msg.channel.type === 'text') {
+        if (args.length) {
+            msg.reply(`ERRORE -> Sintassi del comando errata! Riprova con \`$guidabot\` `);
+            return;
+        }
+        
+        guidabot(msg, fs, regole, moneta) ;
+    }
+
+    else if (command === "listapremi" && msg.channel.type === 'text') {
+        if (args.length) {
+            msg.reply(`ERRORE -> Sintassi del comando errata! Riprova con \`$listapremi\` `);
+            return;
+        }
+        
+        listapremi(msg, fs, regole, moneta);
+    }
+    
+    else if (command === "listaacquisti" && msg.channel.type === 'text') {
+        if (args.length) {
+            msg.reply(`ERRORE -> Sintassi del comando errata! Riprova con \`$listapremi\` `);
+            return;
+        }
+
+        listaacquisti(msg, fs, regole, moneta);
+    }
+
+    // ##### STAFF COMMANDS #####
+    else if (command === "visualizzautente" && msg.channel.type === 'text') { // Visualizza Portafoglio Utente
+        if (!msg.member.roles.has(Staff_ID)) {
+            msg.reply("Non hai i permessi per farlo: Staff_ID");
+            return;
+        }
+        const member = msg.mentions.members.first();
+        if (!member || !args[0] || args.slice(1).length) msg.reply("ERRORE -> Hai inserito pochi o troppi argomenti nel comando! Riprova con \`$visualizzautente @user\`");
+        else {
+            
+            let nome = member.user.username;
+            let mid = member.id;
+            addUser(mid);
+            const user = (await findOneUser(mid));
+            if (!user) {
+                return msg.reply("L'utente non e' presente nel DataBase");
+            }
+
+            let vUser =[
+                `▶ Tag Utente: ${member.user.tag}`,
+                `▶ Discord ID: ${mid}`,
+                `▶ Portafoglio: ${user.balance} ${moneta}`,
+                `▶ Bannato dal BOT: ${user.banned}`,
+            ].join('\n');
+            
+            msg.channel.send(` \`\`\``+vUser+` \`\`\` `);
+        }
+    }
+
+    else if (command === "visualizzaclan" && msg.channel.type === 'text') { // Visualizza Portafoglio Utente
+        if (!msg.member.roles.has(Staff_ID)) {
+            msg.reply("Non hai i permessi per farlo: Staff_ID");
+            return;
+        }
+        const role = msg.mentions.roles.first();
+        if (!role || !args[0] || args.slice(1).length) msg.reply("ERRORE -> Hai inserito pochi o troppi argomenti nel comando! Riprova con \`$visualizzaclan @clan\`");
+        else {
+            
+            let nome = role.name;
+            let rid = role.id;
+            const crew = await crews.findOne( {where: { c_id: rid }} );
+            if (!crew) {
+                return msg.reply("Il Clan non e' presente nel DataBase");
+            }
+
+            let vCrew =[
+                `▶ Clan: ${nome}`,
+                `▶ Discord ID: ${rid}`,
+                `▶ Portafoglio: ${crew.balance} ${moneta}`,
+                `▶ Bannato dal BOT: ${crew.banned}`,
+            ].join('\n');
+            
+            msg.channel.send(` \`\`\``+vCrew+` \`\`\` `);
+        }
+    }
+
+    else if (command === "adduser" && msg.channel.type === 'text') { // Aggiunge un nuovo clan nel DataBase
+        if (!msg.member.roles.has(Staff_ID)) {
+            msg.reply("Non hai i permessi per farlo: Staff_ID");
+            return;
+        }
+        const member = msg.mentions.members.first();
+        if (!member || args.slice(1).length) msg.reply("ERRORE -> Hai inserito pochi o troppi argomenti nel comando! Riprova con \`$addcrew @crew\`");
+        else {
+            const nome = member.user.username;
+            const mid = member.id;
+
+            try {
+                const user = await users.create({
+                    u_id: mid,
+                    name: nome,
+                    balance: 0,
+                    date_j: 0,
+                });
+                msg.reply('Utente aggiunto correttamente!');
+
+                azione = "adduser";
+                msg.client.channels.get(LogsCh_ID).send( logs(msg, null, moneta, user, azione) );
+            }
+            catch (e) {
+                msg.reply('Errore nell\'aggiunta dell\'utente, verifica che non sia già registrato!');
+                console.log('ADDCREW: Something went wrong with adding an User.');
+            }
+        }
+        
+    }
+
+    else if (command === "remuser" && msg.channel.type === 'text') { // Rimuove un clan dal DataBase
+        if (!msg.member.roles.has(Staff_ID)) {
+            msg.reply("Non hai i permessi per farlo: Staff_ID");
+            return;
+        }
+        const member = msg.mentions.members.first();
+        if (!member || args.slice(1).length) msg.reply("ERRORE -> Hai inserito pochi o troppi argomenti nel comando! Riprova con \`$remuser @user\`");
+        else {
+
+            const ms = await msg.channel.send("Confermi il comando?");
+            await ms.react('✔').then(() => ms.react('✖'));
+            const filter = (reaction, user) => {
+                return ['✔', '✖'].includes(reaction.emoji.name) && user.id === msg.author.id;
+            };
+            ms.awaitReactions(filter, { max: 1, time: 60000, errors: ['time'] })
+                .then( async collected => {
+                    const reaction = collected.first();
+
+                    if (reaction.emoji.name === '✔') {
+                        msg.reply('Comando confermato!');
+                        ms.delete();
+
+                        const mid = member.id;
+                        try {
+                            const user = await users.destroy({
+                                where: {
+                                    u_id: mid
+                                }
+                            });
+                            if (!user) {
+                                return msg.reply("Utente non registrato nel DataBase")
+                            }
+                            msg.reply('Utente rimosso correttamente!');
+
+                            azione = "remuser";
+                            msg.client.channels.get(LogsCh_ID).send( logs(msg, member, moneta, null, azione) );
+                        }
+                        catch (e) {
+                            msg.reply('Errore nella rimozione dell\'Utente, controlla se è effettivamente registrato nel DataBase');
+                            console.log('REMCREW: Something went wrong with removing an User. -> '+e);
+                        }
+                        
+                    } 
+                    else if (reaction.emoji.name === '✖') {
+                        msg.reply('Comando Annullato!');
+                        ms.delete();
+                    }
+                    else {
+                        msg.reply('Reazione selezionata errata!');
+                        ms.delete();
+                    }
+                })
+                .catch(collected => {
+                    msg.reply('Non hai selezionato alcun opzione in tempo. Riprova!');
+                    ms.delete();
+                });
+
+        }
+        
+    }
+
+    else if (command === "addcrew" && msg.channel.type === 'text') { // Aggiunge un nuovo clan nel DataBase
+        if (!msg.member.roles.has(Staff_ID)) {
+            msg.reply("Non hai i permessi per farlo: Staff_ID");
+            return;
+        }
+        const role = msg.mentions.roles.first();
+        if (!role || args.slice(1).length) msg.reply("ERRORE -> Hai inserito pochi o troppi argomenti nel comando! Riprova con \`$addcrew @crew\`");
+        else {
+            const nome = role.name;
+            const rid = role.id;
+
+            try {
+                const crew = await crews.create({
+                    c_id: rid,
+                    name: nome,
+                    balance: 0,
+                });
+                msg.reply('Clan aggiunto correttamente!');
+
+                azione = "addcrew";
+                msg.client.channels.get(LogsCh_ID).send( logs(msg, null, moneta, crew, azione) );
+            }
+            catch (e) {
+                msg.reply('Errore nell\'aggiunta della Clan, verifica che non sia già registrato!');
+                console.log('ADDCREW: Something went wrong with adding a Clan.');
+            }
+        }
+        
+    }
+
+    else if (command === "remcrew" && msg.channel.type === 'text') { // Rimuove un clan dal DataBase
+        if (!msg.member.roles.has(Staff_ID)) {
+            msg.reply("Non hai i permessi per farlo: Staff_ID");
+            return;
+        }
+        const role = msg.mentions.roles.first();
+        if (!role || args.slice(1).length) msg.reply("ERRORE -> Hai inserito pochi o troppi argomenti nel comando! Riprova con \`$remcrew @crew\`");
+        else {
+
+            const ms = await msg.channel.send("Confermi il comando?");
+            await ms.react('✔').then(() => ms.react('✖'));
+            const filter = (reaction, user) => {
+                return ['✔', '✖'].includes(reaction.emoji.name) && user.id === msg.author.id;
+            };
+            ms.awaitReactions(filter, { max: 1, time: 60000, errors: ['time'] })
+                .then( async collected => {
+                    const reaction = collected.first();
+
+                    if (reaction.emoji.name === '✔') {
+                        msg.reply('Comando confermato!');
+                        ms.delete();
+
+                        const rid = role.id;
+                        try {
+                            const crew = await crews.destroy({
+                                where: {
+                                    c_id: rid
+                                }
+                            });
+                            if (!crew) {
+                                return msg.reply("Clan non registrato nel DataBase")
+                            }
+                            msg.reply('Clan rimosso correttamente!');
+            
+                            azione = "remcrew";
+                            msg.client.channels.get(LogsCh_ID).send( logs(msg, role, moneta, null, azione) );
+                        }
+                        catch (e) {
+                            msg.reply('Errore nella rimozione del Clan, controlla se è effettivamente registrato nel DataBase');
+                            console.log('REMCREW: Something went wrong with removing a Crew. -> '+e);
+                        }
+                        
+                    } 
+                    else if (reaction.emoji.name === '✖') {
+                        msg.reply('Comando Annullato!');
+                        ms.delete();
+                    }
+                    else {
+                        msg.reply('Reazione selezionata errata!');
+                        ms.delete();
+                    }
+                })
+                .catch(collected => {
+                    msg.reply('Non hai selezionato alcun opzione in tempo. Riprova!');
+                    ms.delete();
+                });
+        }
+        
+    }
+
+    else if (command === "aggiungiutalleri" && msg.channel.type === 'text') { // Aggiunge Moneta ad un Portafoglio Utente
+        if (!msg.member.roles.has(Staff_ID)) {
+            msg.reply("Non hai i permessi per farlo: Staff_ID");
+            return;
+        }            
+        const member = msg.mentions.members.first();
+        if (!member || !args[0] || !args[1] || !Number.isInteger(parseInt(args[1])) || args.slice(2).length) {
+            msg.reply("ERRORE -> Hai inserito pochi o troppi argomenti nel comando! Riprova con \`$aggiungiutalleri @user N\`");
+            return;
+        }
+
+        let mid = member.id;
+        let user = await findOneUser(mid);
+        if (!user) {
+            return msg.reply("L'utente non e' presente nel DataBase");
+        }
+        else if (user.banned) {
+            return msg.reply(`l\'utente è bannato dal BOT, non può usare o guadagnare ${moneta}`)
+        }
+        let balancef = user.get('balance');
+        let num = parseInt(balancef)+parseInt(args[1]);
+        if (num > UserMaxMoneta) {
+            return msg.reply(`Monete massime superate (${UserMaxMoneta}). Non è possibile superare tale limite!`);
+        }
+        try {
+            let update = await users.update({balance: num }, {where: { u_id: mid   }});
+            msg.reply(`Aggiunti correttamente *${parseInt(args[1])} ${moneta}* a ${member.user.username} (ID: ${member.user.id})`);
+            
+            // LOG
+            azione = "aggiungiutalleri";
+            msg.client.channels.get(LogsCh_ID).send( logs(msg, args, moneta, member, azione) );
+        }
+        catch (e) {
+            msg.reply("Errore nella modifica dell'utente, riprova!");
+            console.log("ADDUSERMONEY: Error => "+ e);
+        }
+    }
+
+    else if (command === "rimuoviutalleri" && msg.channel.type === 'text') { // Rimuove Moneta ad un Portafoglio Utente
+        if (!msg.member.roles.has(Staff_ID)) {
+            msg.reply("Non hai i permessi per farlo: Staff_ID");
+            return;
+        }
+        const member = msg.mentions.members.first();
+        if (!member || !args[0] || !args[1] || !Number.isInteger(parseInt(args[1])) || args.slice(2).length) {
+            msg.reply("ERRORE -> Hai inserito pochi o troppi argomenti nel comando! Riprova con \`$aggiungiutalleri @user N\`");
+            return;
+        }
+        let mid = member.id;
+            
+        let user = await findOneUser(mid);
+        if (!user) {
+            return msg.reply("L'utente non e' presente nel DataBase");
+        }
+        else if (user.banned) {
+            return msg.reply(`l\'utente è bannato dal BOT, non può usare o guadagnare ${moneta}`)
+        }
+        let balancef = user.get('balance');
+        let num = parseInt(balancef)-parseInt(args[1]);
+        if (num < UserMinMoneta) {
+            return msg.reply(`Monete minime superate (${UserMinMoneta}). Non è possibile scendere sotto tale limite!`);
+        }
+        try {
+            let update = await users.update({balance: num }, {where: { u_id: mid }});
+            if (user.get('balance') < 0)
+                update = await users.update({balance: 0 }, {where: { u_id: mid }});
+
+            msg.reply(`Rimossi correttamente *${parseInt(args[1])} ${moneta}* a ${member.user.username} (ID: ${member.user.id})`);
+
+            // LOG
+            azione = "rimuoviutalleri";
+            msg.client.channels.get(LogsCh_ID).send( logs(msg, args, moneta, member, azione) );
+        }
+        catch (e) {
+            msg.reply("Errore nela modifica dell'utente, riprova!");
+            console.log("REMUSERMONEY: Error => "+ e);
+        }
+    }
+
+    else if (command === "aggiungictalleri" && msg.channel.type === 'text') { // Aggiunge Moneta ad un Portafoglio Clan
+        if (!msg.member.roles.has(Staff_ID)) {
+            msg.reply("Non hai i permessi per farlo: Staff_ID");
+            return;
+        }            
+        const role = msg.mentions.roles.first()
+        let nome = role.name;
+        let rid = role.id;
+
+        const crew = await crews.findOne({where: { c_id: rid }});
+        if (!crew) {
+            return msg.reply("Il Clan non e' presente nel DataBase");
+        }
+        else if (crew.banned) {
+            return msg.reply(`Il Clan è bannato dal BOT, non può usare o guadagnare ${moneta}`)
+        }
+
+        let balancef = crew.get('balance');
+        let num = parseInt(balancef)+parseInt(args[1]);
+        if (num > CrewMaxMoneta) {
+            return msg.reply(`Monete massime superate (${CrewMaxMoneta}). Non è possibile salire sopra tale limite!`);
+        }
+        try {
+            let update = await crews.update({balance: num }, {where: { c_id: rid }});
+            msg.reply(`Portafoglio del Clan *${crew.name}* modificato correttamente!`);
+
+            azione = "aggiungictalleri";
+            msg.client.channels.get(LogsCh_ID).send( logs(msg, args, moneta, crew, azione) );
+        }
+        catch (e) {
+            msg.reply('ERRORE modifica Portafoglio del Clan');
+            console.log("aggiungictalleri -> Errore modifica portafoglio del clan: "+e);
+        }
+    }
+
+    else if (command === "rimuovictalleri" && msg.channel.type === 'text') { // Rimuove Moneta ad un Portafoglio Clan
+        if (!msg.member.roles.has(Staff_ID)) {
+            msg.reply("Non hai i permessi per farlo: Staff_ID");
+            return;
+        }            
+        const role = msg.mentions.roles.first()
+        let nome = role.name;
+        let rid = role.id;
+            
+        const crew = await crews.findOne({where: { c_id: rid }});
+        if (!crew) {
+            return msg.reply("Il Clan non e' presente nel DataBase");
+        }
+        else if (crew.banned) {
+            return msg.reply(`Il Clan è bannato dal BOT, non può usare o guadagnare ${moneta}`)
+        }
+
+        let balancef = crew.get('balance');
+        let num = parseInt(balancef)-parseInt(args[1]);
+        if (num < CrewMinMoneta) {
+            return msg.reply(`Monete minime superate (${CrewMinMoneta}). Non è possibile scendere sotto tale limite!`);
+        }
+        try {
+            let update = await crews.update({balance: num }, {where: { c_id: rid }});
+            if (crew.get('balance') < 0)
+                update = await crews.update({balance: 0 }, {where: { c_id: rid }});
+            msg.reply(`Portafoglio del Clan *${crew.name}* modificato correttamente!`);
+
+            azione = "rimuovictalleri";
+            msg.client.channels.get(LogsCh_ID).send( logs(msg, args, moneta, crew, azione) );
+        }
+        catch (e) {
+            msg.reply('ERRORE modifica Portafoglio del Clan');
+            console.log("rimuovictalleri -> Errore modifica portafoglio del clan: "+e);
+        }
+    }
+
+    else if (command === "ban" && msg.channel.type === 'text') { // Aggiunge Moneta ad un Portafoglio Utente
+        if (!msg.member.roles.has(Staff_ID)) {
+            msg.reply("Non hai i permessi per farlo: Staff_ID");
+            return;
+        }
+        else if (!args[0])  return msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$ban user @user\` o \`$ban crew @crew\`');
+
+        const ms = await msg.channel.send("Confermi il comando?");
+        await ms.react('✔').then(() => ms.react('✖'));
+        const filter = (reaction, user) => {
+            return ['✔', '✖'].includes(reaction.emoji.name) && user.id === msg.author.id;
+        };
+        ms.awaitReactions(filter, { max: 1, time: 60000, errors: ['time'] })
+            .then( async collected => {
+                const reaction = collected.first();
+                if (reaction.emoji.name === '✔') {
+                    
+                    msg.reply('Comando confermato!');
+                    ms.delete();
+
+                    let type = args[0].toLowerCase();
+                    if (type === 'user') {
+                        const member = msg.mentions.members.first();
+                        if (!args[0] || !args[1] || !member || args.slice(2).length ) {
+                            msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$ban user @user\`');
+                            return;
+                        }
+                        let mid = member.id;
+                        let user = await findOneUser(mid);
+                        if (!user) {
+                            return msg.reply("L'utente non e' presente nel DataBase");
+                        }
+                        try {
+                            await users.update({banned: true }, {where: { u_id: mid }});
+                            msg.reply(`Utente ${member.user.username} bannato correttamente dal BOT!`)
+
+                            azione = "banuser";
+                            msg.client.channels.get(LogsCh_ID).send( logs(msg, member, moneta, null, azione) );
+                        } catch(e) {
+                            msg.reply("Errore nel BAN dell'utente, riprova!");
+                            console.log("BAN USER: Error => "+ e);
+                        }
+
+                    }
+                    else if (type === 'crew') {
+                        const role = msg.mentions.roles.first()
+                        if (!args[0] || !args[1] || !role || args.slice(2).length ) {
+                            msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$ban crew @crew\`');
+                            return;
+                        }
+                        let nome = role.name;
+                        let rid = role.id;
+
+                        const crew = await crews.findOne({where: { c_id: rid }});
+                        if (!crew) {
+                            return msg.reply("Il Clan non e' presente nel DataBase");
+                        }
+                        try {
+                            await crews.update({banned: true }, {where: { c_id: rid   }});
+                            msg.reply(`Clan ${nome} bannato correttamente dal BOT!`)
+
+                            azione = "bancrew";
+                            msg.client.channels.get(LogsCh_ID).send( logs(msg, role, moneta, null, azione) );
+                        } catch(e) {
+                            msg.reply("Errore nel BAN della Crew, riprova!");
+                            console.log("BAN Crew: Error => "+ e);
+                        }
+                    }
+                    else {
+                        return msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$ban user @user\` o \`$ban crew @crew\`');
+                    }
+                }
+                else if (reaction.emoji.name === '✖') {
+                    msg.reply('Comando Annullato!');
+                    ms.delete();
+                }
+                else {
+                    msg.reply('Reazione selezionata errata!');
+                    ms.delete();
+                }
+            })
+            .catch(collected => {
+                msg.reply('Non hai selezionato alcun opzione in tempo. Riprova!');
+                ms.delete();
+            });
+    }
+
+    else if (command === "unban" && msg.channel.type === 'text') { // Aggiunge Moneta ad un Portafoglio Utente
+        if (!msg.member.roles.has(Staff_ID)) {
+            msg.reply("Non hai i permessi per farlo: Staff_ID");
+            return;
+        }
+        else if (!args[0])  return msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$unban user @user\` o \`$unban crew @crew\`');
+
+        let type = args[0].toLowerCase();
+        if (type === 'user') {
+            const member = msg.mentions.members.first();
+            if (!args[0] || !args[1] || !member || args.slice(2).length ) {
+                msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$unban user @user\``');
+                return;
+            }
+            let mid = member.id;
+            let user = await findOneUser(mid);
+            if (!user) {
+                return msg.reply("L'utente non e' presente nel DataBase");
+            }
+            try {
+                await users.update({banned: false }, {where: { u_id: mid   }});
+                msg.reply(`Utente ${member.user.username} unbannato correttamente dal BOT!`)
+
+                azione = "unbanuser";
+                msg.client.channels.get(LogsCh_ID).send( logs(msg, member, moneta, null, azione) );
+            } catch(e) {
+                msg.reply("Errore nel BAN dell'utente, riprova!");
+                console.log("BAN USER: Error => "+ e);
+            }
+
+        }
+        else if (type === 'crew') {
+            const role = msg.mentions.roles.first()
+            if (!args[0] || !args[1] || !role || args.slice(2).length ) {
+                msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$unban crew @crew\`');
+                return;
+            }
+            let nome = role.name;
+            let rid = role.id;
+
+            const crew = await crews.findOne({where: { c_id: rid }});
+            if (!crew) {
+                return msg.reply("Il Clan non e' presente nel DataBase");
+            }
+            try {
+                await crews.update({banned: false }, {where: { c_id: rid   }});
+                msg.reply(`Clan ${nome} unbannato correttamente dal BOT!`)
+
+                azione = "unbancrew";
+                msg.client.channels.get(LogsCh_ID).send( logs(msg, role, moneta, null, azione) );
+            } catch(e) {
+                msg.reply("Errore nel BAN della Crew, riprova!");
+                console.log("BAN Crew: Error => "+ e);
+            }
+            
+        }
+        else {
+            return msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$ban user @user\` o \`$ban crew @crew\`');
+        }
+    }
+
+
+    // ECONOMY SETTINGS
+    else if (command === "moneta" && msg.channel.type === 'text') { // Cambia nome della Moneta (Saff_ID needed)
+        if (msg.member.roles.has(Staff_ID)) {
+            if (!args[0] || args.slice(1).length) {
+                msg.reply("ERRORE -> Sintassi del comando errata! Riprova con \`$moneta NOMEMONETA\`");
+                return;
+            }
+            try {
+                await eco_settings.update({datas: args[0].trim()}, {where: {name: "Moneta"}});
+                msg.reply(`Moneta cambiata correttamente in: *${args[0].trim()}*`)
+
+                azione = "moneta";
+                msg.client.channels.get(LogsCh_ID).send( logs(msg, args, null, null, azione) );
+            }
+            catch (e) {
+                if (e.name === 'SequelizeUniqueConstraintError') {
+                    msg.reply('Moneta già registrata');
+                }
+                else {
+                    msg.reply('Errore nella modifica della Moneta. Riprova!');
+                }
+            }
+        }else msg.reply("Non hai i permessi per farlo: Staff_ID");
+    }
+
+    else if (command === "staffid" && msg.channel.type === 'text') { // Cambia ruolo dello Staff per gestione (ServerOwner needed)
+        if (msg.author.id === msg.guild.ownerID) {
+            const role = msg.mentions.roles.first();
+            if (!role || !args[0] || args.slice(1).length) {
+                msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$staffid @ruolostaff\`');
+                return;
+            }
+            const roleid = role.id;
+            try {
+                await eco_settings.update( {datas: roleid}, {where: {name: "Staff_ID"} } );
+                msg.reply(`Staff_ID cambiato correttamente in: *<@&${roleid}> (${roleid})*`)
+
+                azione = "staffid";
+                msg.client.channels.get(LogsCh_ID).send( logs(msg, role, null, null, azione) );
+            }
+            catch (e) {
+                if (e.name === 'SequelizeUniqueConstraintError') {
+                    msg.reply('Crew già registrata');
+                    console.log('ADDCREW: That Crew already exists.');
+                }
+                else {
+                    msg.reply('Errore nell aggiunta della Crew');
+                    console.log('ADDCREW: Something went wrong with adding a Crew.');
+                }
+            }
+            
+            
+        }else msg.reply("Non hai i permessi per farlo: ServerOwner");
+    }
+
+    else if (command === "gestoreid" && msg.channel.type === 'text') { // Cambio ruolo del GestoreCiurma (Gestore_ID needed)
+        if (msg.member.roles.has(Staff_ID)) {
+            const role = msg.mentions.roles.first();
+            if (!role || !args[0] || args.slice(1).length) {
+                msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$gestoreid @ruologestore\`');
+                return;
+            }
+            const roleid = role.id;
+            try {
+                await eco_settings.update({datas: roleid}, {where: {name: "Gestore_ID"}});
+                msg.reply(`Gestore cambiato correttamente in: *<@&${roleid}> (${roleid})*`)
+
+                azione = "gestoreid";
+                msg.client.channels.get(LogsCh_ID).send( logs(msg, role, null, null, azione) );
+            }
+            catch (e) {
+                if (e.name === 'SequelizeUniqueConstraintError') {
+                    msg.reply('Crew già registrata');
+                    console.log('ADDCREW: That Crew already exists.');
+                }
+                else {
+                    msg.reply('Errore nell aggiunta della Crew');
+                    console.log('ADDCREW: Something went wrong with adding a Crew.');
+                }
+            }
+        }else msg.reply("Non hai i permessi per farlo: Staff_ID");
+    }
+
+    else if (command === "chlogs" && msg.channel.type === 'text') { // Cambio canale dei Logs (Saff_ID needed)
+        if (msg.member.roles.has(Staff_ID)) {
+            const channel = msg.mentions.channels.first();
+            if (!channel || !args[0] || args.slice(1).length) {
+                msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$chlogs #channel\`');
+                return;
+            }
+            const chid = channel.id;
+            try {
+                await eco_settings.update({datas: chid}, {where: {name: "LogsCh_ID"}});
+                msg.reply(`Canale di Logs cambiato correttamente in: *<#${chid}> (${chid})*`)
+
+            }
+            catch (e) {
+                if (e.name === 'SequelizeUniqueConstraintError') {
+                    msg.reply('Crew già registrata');
+                    console.log('ADDCREW: That Crew already exists.');
+                }
+                else {
+                    msg.reply('Errore nell aggiunta della Crew');
+                    console.log('ADDCREW: Something went wrong with adding a Crew.');
+                }
+            }
+        }else msg.reply("Non hai i permessi per farlo: Staff_ID");
+    }
+
+    else if (command === "chrequest" && msg.channel.type === 'text') { // Cambio canale dei Request (Saff_ID needed)
+        if (msg.member.roles.has(Staff_ID)) {
+            const channel = msg.mentions.channels.first();
+            if (!channel || !args[0] || args.slice(1).length) {
+                msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$chrequest #channel\`');
+                return;
+            }
+            const chid = channel.id;
+            try {
+                await eco_settings.update({datas: chid}, {where: {name: "RequestCh_ID"}});
+                msg.reply(`Canale di Request cambiato correttamente in: *<#${chid}> (${chid})*`)
+
+                azione = "chrequest";
+                msg.client.channels.get(LogsCh_ID).send( logs(msg, channel, null, null, azione) );
+            }
+            catch (e) {
+                if (e.name === 'SequelizeUniqueConstraintError') {
+                    msg.reply('Crew già registrata');
+                    console.log('ADDCREW: That Crew already exists.');
+                }
+                else {
+                    msg.reply('Errore nell aggiunta della Crew');
+                    console.log('ADDCREW: Something went wrong with adding a Crew.');
+                }
+            }
+        }else msg.reply("Non hai i permessi per farlo: Staff_ID");
+    }
+
+    else if (command === "chservices" && msg.channel.type === 'text') { // Cambio canale dei Request (Saff_ID needed)
+        if (msg.member.roles.has(Staff_ID)) {
+            const channel = msg.mentions.channels.first();
+            if (!channel || !args[0] || args.slice(1).length) {
+                msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$chservices #channel\`');
+                return;
+            }
+            const chid = channel.id;
+            try {
+                await eco_settings.update({datas: chid}, {where: {name: "ServicesCh_ID"}});
+                msg.reply(`Canale di Service cambiato correttamente in: *<#${chid}> (${chid})*`)
+                
+                azione = "chservices";
+                msg.client.channels.get(LogsCh_ID).send( logs(msg, channel, null, null, azione) ); 
+            }
+            catch (e) {
+                if (e.name === 'SequelizeUniqueConstraintError') {
+                    msg.reply('Crew già registrata');
+                    console.log('ADDCREW: That Crew already exists.');
+                }
+                else {
+                    msg.reply('Errore nell aggiunta della Crew');
+                    console.log('ADDCREW: Something went wrong with adding a Crew.');
+                }
+            }
+        }else msg.reply("Non hai i permessi per farlo: Staff_ID");
+    }
+
+    else if (command === "moneylimit" && msg.channel.type === 'text') { // Cambio canale dei Request (Saff_ID needed)
+        if (msg.member.roles.has(Staff_ID)) {
+            if (!args[0] || !args[1] || !args[2] || args.slice(3).length || !Number.isInteger(parseInt(args[2]))) {
+                msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$moneylimit user min N\`, \`$moneylimit user max N\`, \`$moneylimit crew min N\` oppure \`$moneylimit crew max N\`');
+                return;
+            }
+            
+            let type = args[0].toLowerCase();
+            let max_min = args[1].toLowerCase();
+            let amount = parseInt(args[2]);
+            try {
+                switch(type) {
+                    case "user":
+                        if (max_min.toLowerCase() === "min") {
+                            await eco_settings.update({datas: amount}, {where: {name: "UserMinMoneta"}});
+                            msg.reply(`Minimo di ${moneta} per portafoglio Utente cambiato correttamente in: *${args[2]}*`)
+
+                            // Ricerco tutti gli utenti che hanno le monete superiori/inferiori al nuovo limite e le modifica
+                            const findall = await users.findAll();
+                            let flag = false;
+                            for (let x in findall) {
+                                if (findall[x].balance < amount) {
+                                    flag = true;
+                                    msg.client.channels.get(LogsCh_ID).send( " -> "+ findall[x].name + " (" + findall[x].u_id +") - Monete precedenti: "+findall[x].balance + ` ${moneta}`);
+                                    await users.update( {balance: amount }, {where: { u_id: findall[x].u_id }} );
+                                }
+                                
+                            }
+                            if (flag)
+                                msg.client.channels.get(LogsCh_ID).send("**I precedenti utenti avevano meno monete del nuovo limite configurato: **");
+                            
+                        }
+                        else if (max_min.toLowerCase() === "max") {
+                            await eco_settings.update({datas: amount}, {where: {name: "UserMaxMoneta"}});
+                            msg.reply(`Massimo di ${moneta} per portafoglio Utente cambiato correttamente in: *${args[2]}*`)
+                            
+                            // Ricerco tutti gli utenti che hanno le monete superiori/inferiori al nuovo limite e le modifica
+                            const findall = await users.findAll();
+                            let flag = false;
+                            for (let x in findall) {
+                                if (findall[x].balance > amount) {
+                                    flag = true;
+                                    msg.client.channels.get(LogsCh_ID).send( " -> "+ findall[x].name + " (" + findall[x].u_id +") - Monete precedenti: "+findall[x].balance + ` ${moneta}`);
+                                    await users.update( {balance: amount }, {where: { u_id: findall[x].u_id }} );
+                                }
+                                
+                            }
+                            if (flag)
+                                msg.client.channels.get(LogsCh_ID).send("**I precedenti utenti avevano più monete del nuovo limite configurato: **");
+                            
+                        }
+                        else {
+                            return msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$moneylimit user min N\`, \`$moneylimit user max N\`, \`$moneylimit crew min N\` oppure \`$moneylimit crew max N\`');
+                        }
+                        break;
+
+                    // CASE CREWS
+                    case "crew":
+                        if (max_min.toLowerCase() === "min") {
+                            await eco_settings.update({datas: amount}, {where: {name: "CrewMinMoneta"}});
+                            msg.reply(`Minimo di ${moneta} per portafoglio Clan cambiato correttamente in: *${args[2]}*`)
+
+                            // Ricerco tutti i Clan che hanno le monete superiori/inferiori al nuovo limite e li modifica
+                            const findall = await crews.findAll();
+                            let flag = false;
+                            for (let x in findall) {
+                                if (findall[x].balance < amount) {
+                                    flag = true;
+                                    msg.client.channels.get(LogsCh_ID).send( " -> "+ findall[x].name + " (" + findall[x].c_id +") - Monete precedenti: "+findall[x].balance + ` ${moneta}`);
+                                    await crews.update( {balance: amount }, {where: { c_id: findall[x].c_id }} );
+                                }
+                                
+                            }
+                            if (flag)
+                                msg.client.channels.get(LogsCh_ID).send("**I precedenti Clan avevano meno monete del nuovo limite configurato: **");
+                            
+                        }
+                        else if (max_min.toLowerCase() === "max") {
+                            await eco_settings.update({datas: amount}, {where: {name: "CrewMaxMoneta"}});
+                            msg.reply(`Massimo di ${moneta} per portafoglio Clan cambiato correttamente in: *${args[2]}*`)
+
+                            // Ricerco tutti i Clan che hanno le monete superiori/inferiori al nuovo limite e li modifica
+                            const findall = await crews.findAll();
+                            let flag = false;
+                            for (let x in findall) {
+                                if (findall[x].balance > amount) {
+                                    flag = true;
+                                    msg.client.channels.get(LogsCh_ID).send( " -> "+ findall[x].name + " (" + findall[x].c_id +") - Monete precedenti: "+findall[x].balance + ` ${moneta}`);
+                                    await crews.update( {balance: amount }, {where: { c_id: findall[x].c_id }} );
+                                }
+                                
+                            }
+                            if (flag)
+                                msg.client.channels.get(LogsCh_ID).send("**I precedenti Clan avevano meno monete del nuovo limite configurato: **");
+                            
+                        }
+                        else {
+                            return msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$moneylimit user min N\`, \`$moneylimit user max N\`, \`$moneylimit crew min N\` oppure \`$moneylimit crew max N\`');
+                        }
+                        break;
+
+                    default:
+                        return msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$moneylimit user min N\`, \`$moneylimit user max N\`, \`$moneylimit crew min N\` oppure \`$moneylimit crew max N\`');
+                        
+                        break;
+                }
+               
+                azione = "moneylimit";
+                msg.client.channels.get(LogsCh_ID).send( logs(msg, args, moneta, null, azione) );
+            }
+            catch (e) {
+                msg.reply("Errore nella modifica dei limiti del portafoglio!");
+                console.log("Errore modifica dei limiti del portafoglio: "+e.name);
+            }
+        }else return msg.reply("Non hai i permessi per farlo: Staff_ID");
+    }
+
+    else if (command === "viewsettings" && msg.channel.type === 'text') {
+        if (msg.member.roles.has(Staff_ID)) {
+            if (args.length) {
+                msg.reply('ERRORE -> Sintassi comando errata. Riprova con \`$viewsettings\`');
+                return;
+            }
+            try {
+                const settingsEmbed = await new Discord.RichEmbed()
+                .setColor('0xFF0000')
+                .setAuthor(`<💲> EconomySettings <💲>`)
+
+                .addField("Moneta",`${moneta}` )
+                .addField("Staff_ID", `${Staff_ID} (${msg.guild.roles.get(Staff_ID)})` )
+                .addField("Gestore_ID", `${Gestore_ID} (${msg.guild.roles.get(Gestore_ID)})` )
+                .addField("LogsCh_ID", `${LogsCh_ID} (${msg.guild.channels.get(LogsCh_ID)})` )
+                .addField("RequestCh_ID", `${RequestCh_ID} (${msg.guild.channels.get(RequestCh_ID)})` )
+                .addField("Services_ID", `${ServicesCh_ID} (${msg.guild.channels.get(ServicesCh_ID)})` )
+                .addField("UserMinMoneta", `${UserMinMoneta}` )
+                .addField("UserMaxMoneta", `${UserMaxMoneta}` )
+                .addField("CrewMinMoneta", `${CrewMinMoneta}` )
+                .addField("CrewMaxMoneta", `${CrewMaxMoneta}` )
+
+                // const settings = await eco_settings.findAll();
+                // settings.forEach(value => settingsEmbed.addField(value.name, `*${value.datas}*`) );
+                
+                msg.channel.send(settingsEmbed);
+            } catch(e) {
+                msg.reply("ERRORE -> Qualche settaggio non è stato compilato correttamente!");
+            }
+            
+        }else msg.reply("Non hai i permessi per farlo: Staff_ID");
+    }
+
+    else if (command === "setdonatecrew" && msg.channel.type === 'text') {
+        if (msg.member.roles.has(Staff_ID)) {
+            if (args.length) {
+                msg.reply('ERRORE -> Sintassi del comando errata! Riprova con \`$setdonatecrew\`');
+                return;
+            }
+            if (flagDonateCrew) {
+                flagDonateCrew = false;
+                msg.channel.send("Comando \`$donatecrew @nomecrew N\` => DISATTIVATO");
+            }
+            else if (!flagDonateCrew) {
+                flagDonateCrew = true;
+                msg.channel.send("Comando \`$donatecrew @nomecrew N\` => ATTIVATO");
+            }
+        }
+    }
+
+});
+
+client.on('guildMemberAdd', async (member) => {
+    await users.create({
+        u_id: member.id,
+        name: member.user.username,
+        balance: 0,
+        date_j: 0
+    });
+});
+
+client.on('error', console.log);
+
+client.login(process.env.TOKEN);

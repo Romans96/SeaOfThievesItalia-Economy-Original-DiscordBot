@@ -1,0 +1,24 @@
+
+▶ Ciurma Livello 1 (costo: 5000 Talleri) -> Ottieni:
+🔹Membri Massimi: 10 ➕ Chat ➕ 3 Canali Vocali
+▶ Ciurma Livello 2 (costo: 50000 Talleri) -> Ottieni:
+🔹Membri Massimi: 20 ➕ Chat ➕ 5 Canali Vocali
+▶ Ciurma Livello 3 (costo: 350000 Talleri) -> Ottieni:
+🔹Membri Massimi: 30 ➕ Chat ➕ Lobby Vocale ➕ 5 Canali Vocali
+▶ Ciurma Livello 4 (costo: 1000000 Talleri) -> Ottieni:
+🔹Membri Massimi: 40 ➕ Chat ➕ 2 Lobby Vocali ➕ 5 Canali Vocali ➕ OPT Incluso
+▶ Ciurma Livello 5 (costo: 5000000 Talleri) -> Ottieni:
+🔹Membri Massimi: 50 ➕ Bacheca ➕ Chat ➕ 2 Lobby Vocali ➕ 5 Canali Vocali ➕ OPT Incluso ➕ Personalizzazione canali
+
+
+▶ OPT (costo: 25000 Talleri ognuno) -> Ottieni:
+🔹Logo con Emoji
+🔹SottoRanks
+🔹Bacheca
+
+▶ Upgrade Canali Vocali e Personalizzazione Nome:
+🔹1 Canale (costo 8000 Talleri)
+🔹Tutti i Canali (costo 25000 Talleri)
+**->** Un Upgrade ti permette di ottenere (in quel/quei canale/canali):
+🔹Canali Vocali => da 6 a 12 slots
+🔹Lobby => da 16 a 20 slots

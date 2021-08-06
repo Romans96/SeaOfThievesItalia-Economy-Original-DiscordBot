@@ -1,0 +1,13 @@
+
+▶ Questo ***BOT*** si occupa di gestire due Portafogli, uno per gli utenti singoli e uno per ogni singola ciurma di questo server.
+
+▶ Utilizzare come primo comando **--> `$portafoglio` <--** per poter **iniziare ad usare il BOT**. 
+Da quel momento in poi, potrai vedere il tuo bilancio semplicemente digitando nuovamente tale comando.
+
+▶ Ogni Membro può **guadagnare Talleri** da mettere nel proprio Portafoglio completando degli obbiettivi, che potete
+visualizzare digitanto il comando **`$listapremi`**.
+
+▶ Inoltre potrete **guadagnare i Talleri** stando semplicemente in un canale vocale (ovviamente non il canale AFK).
+In tal modo ogni minuto guadagnerai 1 Tallero, che viene automaticamente inserito nel tuo Portafoglio.
+**N.B.** Il guadagno per sessione è **limitato a 5 ore**, ovvero, dopo 5 ore di fila online, senza mai uscire, il conteggio dei punti verrà stoppato. 
+Per farlo ripartire (e cominciare nuovamente a guadagnare), dovrete uscire dai Canali Vocali e rientrarvici.

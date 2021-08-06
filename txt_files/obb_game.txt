@@ -1,0 +1,13 @@
+🔹**Pirata Leggendario** (acquisibile con il comando `$portafoglio`, se raggiunto) - 250 Talleri
+🔹**Athena Livello 10** (acquisibile con il comando `$portafoglio`, se raggiunto) - 3000 Talleri
+🔹**Video vostri postati in galleria SPETTACOLARI** - A decisione dello staff
+🔷***Video mentre***:
+🔹**Vendi 5 forzieri dei mille grog** - 1000 Talleri
+🔹**Vendi 5 forzieri dei rimpianti** - 1000 Talleri
+🔹**Vendi 5 forzieri di atena** - 3000 Talleri
+🔹**Uccidi Fantasma Velato** - 10000 Talleri
+**I Video vanno inseriti nel canale #galleria e poi fatta la richiesta pagamento attraverso il comando `$assistenza (richiesta)`.
+Con la richiesta, possibilmente inserire il link del video al #galleria.**
+*Per copiare il link del messaggio in #galleria: 
+1) A destra del vostro post con il video, vi comprariranno due pulsanti (un'emoji e 3 puntini verticali)
+2) Cliccate sui puntini verticali e fate \'Copia il link\' e lo incollate nel comando della richiesta*

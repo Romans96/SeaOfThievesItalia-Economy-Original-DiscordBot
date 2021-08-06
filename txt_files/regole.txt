@@ -1,0 +1,4 @@
+**1) I Talleri d'oro sono di proprietà dei singoli pirati che devono farseli accreditare da un moderatore previa prova con screenshot.							
+2) Per utilizzare i talleri d'oro per l'ampliamento della ciurma privata,
+essi vanno donati al Gestore Ciurma che chiederà il riscatto dell'ampliamento all'interno del Conclave,
+utilizzando l'apposito comando (SOLO Gestori Ciurma): 
